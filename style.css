@@ -44,8 +44,9 @@ body {
 
 .keyboard-help {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 8px 24px;
+  gap: 8px 18px;
   padding: 16px 4px 0;
   color: #c6bcd8;
   font-size: clamp(11px, 2.4vw, 14px);
@@ -58,6 +59,19 @@ body {
 
 .keyboard-help strong {
   color: #fff0a8;
+}
+
+.keyboard-help kbd {
+  display: inline-block;
+  min-width: 1.7em;
+  margin: 0 2px;
+  padding: 1px 4px;
+  border: 1px solid #796a9c;
+  border-bottom-width: 3px;
+  border-radius: 3px;
+  color: #fff0a8;
+  font: inherit;
+  text-align: center;
 }
 
 .visually-hidden {
@@ -79,6 +93,7 @@ body {
 
   .keyboard-help {
     flex-direction: column;
+    align-items: flex-start;
     gap: 4px;
     padding: 12px 8px 0;
   }

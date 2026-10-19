@@ -6,4 +6,4 @@
 ## 단계
 | 단계 | 상태 | 요약 | 설계도 |
 | :--- | :--- | :--- | :--- |
-| P01 | `in_progress` | 브라우저 게임 뼈대, 다리와 균형 조작, 점수에 따라 어려워지는 장애물, 픽셀 아트 화면을 만듭니다. | [P01](../phases/2026-10-19-two-legged-clop/P01-browser-game/phase.md) |
+| P01 | `done` | 브라우저 게임 뼈대, 다리와 균형 조작, 점수에 따라 어려워지는 장애물, 픽셀 아트 화면을 만듭니다. | [P01](../phases/2026-10-19-two-legged-clop/P01-browser-game/phase.md) |
