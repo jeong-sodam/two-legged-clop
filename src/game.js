@@ -1,4 +1,6 @@
-﻿export class Game {
+import { createHazard, difficultyForScore, intersects } from "./obstacles.js";
+
+export class Game {
   constructor(canvas, context, input) {
     this.canvas = canvas;
     this.context = context;
@@ -8,6 +10,14 @@
     this.lastTimestamp = null;
     this.animationFrameId = null;
     this.fallElapsedSeconds = 0;
+    this.rng = Math.random;
+    this.hazards = [];
+    this.score = 0;
+    this.distance = 0;
+    this.distanceRemainder = 0;
+    this.obstaclesAvoided = 0;
+    this.nextHazardId = 1;
+    this.spawnTimer = this.randomSpawnDelay();
     this.player = {
       x: 220,
       y: 390,
@@ -45,7 +55,10 @@
     if (this.state === "ready") {
       const enterPressed = this.input.consumePressed("Enter");
       const spacePressed = this.input.consumePressed("Space");
-      if (enterPressed || spacePressed) this.state = "playing";
+      if (enterPressed || spacePressed) {
+        this.state = "playing";
+        this.spawnTimer = this.randomSpawnDelay();
+      }
       return;
     }
 
@@ -112,6 +125,74 @@
     }
   }
 
+  randomSpawnDelay() {
+    const { spawnMin, spawnMax } = difficultyForScore(this.score ?? 0);
+    return spawnMin + this.rng() * (spawnMax - spawnMin);
+  }
+
+  spawnHazard() {
+    const difficulty = difficultyForScore(this.score);
+    const type = difficulty.allowedTypes[Math.floor(this.rng() * difficulty.allowedTypes.length)];
+    const sudden = difficulty.level >= 3 && this.rng() < 0.2;
+    const x = sudden ? 640 : this.canvas.width + 40;
+    const hazard = createHazard(type, x, 390, this.rng);
+    hazard.id = this.nextHazardId++;
+    hazard.sudden = sudden;
+    hazard.warningDuration = sudden ? 0.35 : 0;
+    hazard.vx = -difficulty.speed;
+    this.hazards.push(hazard);
+  }
+
+  updateCourse(deltaSeconds) {
+    const difficulty = difficultyForScore(this.score);
+    this.distance += difficulty.speed * deltaSeconds;
+    this.distanceRemainder += difficulty.speed * deltaSeconds;
+    const distancePoints = Math.floor(this.distanceRemainder / 10);
+    if (distancePoints > 0) {
+      this.score += distancePoints;
+      this.distanceRemainder -= distancePoints * 10;
+    }
+
+    this.spawnTimer -= deltaSeconds;
+    if (this.spawnTimer <= 0) {
+      this.spawnHazard();
+      this.spawnTimer += this.randomSpawnDelay();
+    }
+
+    const player = this.player;
+    const playerRect = {
+      x: player.x - 18,
+      y: player.y - (player.crouching ? 45 : 85),
+      width: 36,
+      height: player.crouching ? 45 : 85,
+    };
+
+    for (const hazard of this.hazards) {
+      hazard.age += deltaSeconds;
+      hazard.x += hazard.vx * deltaSeconds;
+      if (hazard.type === "thrown") {
+        hazard.y = hazard.baseY + Math.sin(hazard.age * 5 + hazard.phase) * 18;
+      }
+
+      const warningOver = !hazard.sudden || hazard.age >= hazard.warningDuration;
+      if (!hazard.resolved && warningOver && intersects(playerRect, hazard)) {
+        hazard.resolved = true;
+        player.vx = -80;
+        player.balance = this.clamp(
+          player.balance + (player.x < hazard.x + hazard.width / 2 ? 0.16 : -0.16),
+          -1.2,
+          1.2,
+        );
+      }
+
+      if (!hazard.passed && !hazard.resolved && hazard.x + hazard.width < player.x) {
+        hazard.passed = true;
+        this.obstaclesAvoided += 1;
+        this.score += 100;
+      }
+    }
+    this.hazards = this.hazards.filter((hazard) => hazard.x + hazard.width >= -40);
+  }
   updateBalance(deltaSeconds) {
     const { player } = this;
     const heightDifference = player.rightFoot - player.leftFoot;
@@ -149,6 +230,36 @@
     this.drawStateMessage(ctx);
   }
 
+  drawHazards(ctx) {
+    for (const hazard of this.hazards) {
+      if (hazard.sudden && hazard.age < hazard.warningDuration) {
+        ctx.fillStyle = Math.floor(hazard.age * 18) % 2 === 0 ? "#fff0a8" : "#e54b52";
+      } else {
+        ctx.fillStyle = hazard.type === "barrier" ? "#8b5637"
+          : hazard.type === "overhead" ? "#818b32" : "#ee8138";
+      }
+      ctx.fillRect(hazard.x, hazard.y, hazard.width, hazard.height);
+      ctx.fillStyle = "rgba(40, 35, 59, 0.45)";
+      if (hazard.type === "barrier") {
+        ctx.fillRect(hazard.x + 5, hazard.y + 8, 6, hazard.height - 8);
+        ctx.fillRect(hazard.x + 22, hazard.y + 8, 6, hazard.height - 8);
+      } else if (hazard.type === "overhead") {
+        ctx.fillRect(hazard.x + 8, hazard.y + hazard.height - 7, hazard.width - 16, 7);
+      } else {
+        ctx.fillRect(hazard.x + 6, hazard.y + 6, 6, 6);
+      }
+    }
+  }
+
+  drawHud(ctx) {
+    const { level } = difficultyForScore(this.score);
+    ctx.fillStyle = "#fff0a8";
+    ctx.font = "bold 16px monospace";
+    ctx.textAlign = "right";
+    ctx.fillText(`점수 ${this.score}`, this.canvas.width - 28, 34);
+    ctx.fillText(`레벨 ${level}  회피 ${this.obstaclesAvoided}`, this.canvas.width - 28, 58);
+    ctx.textAlign = "start";
+  }
   drawBalanceMeter(ctx) {
     const { balance } = this.player;
     const x = 32;
