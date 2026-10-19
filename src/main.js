@@ -1,4 +1,5 @@
 ﻿import { Game } from "./game.js";
+import { Input } from "./input.js";
 
 const canvas = document.querySelector("#game");
 if (!(canvas instanceof HTMLCanvasElement)) {
@@ -11,6 +12,6 @@ if (!context) {
 }
 
 context.imageSmoothingEnabled = false;
-const game = new Game(canvas, context);
+const input = new Input(window);
+const game = new Game(canvas, context, input);
 game.start();
-
