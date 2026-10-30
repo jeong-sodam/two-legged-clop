@@ -1,16 +1,16 @@
-# 현재 작업
+# Current Context
 
-## 진행 중인 계획
-[두 발 클롭 게임](./plans/2026-10-19-two-legged-clop.md)
+## Active Plan
+[GitHub Pages 플레이 테스트 배포 흐름](./plans/2026-10-30-github-pages-playtest.md)
 
-## 완료된 단계
-[P01 브라우저 게임](./phases/2026-10-19-two-legged-clop/P01-browser-game/phase.md)
+## Active Phase
+[P01 GitHub Pages 배포](./phases/2026-10-30-github-pages-playtest/P01-pages-deploy/phase.md)
 
-## 완료된 작업
-[T04 픽셀 아트와 UI](./phases/2026-10-19-two-legged-clop/P01-browser-game/T04-pixel-ui.md)
+## Active Task
+[T01 GitHub Pages workflow와 플레이 안내](./phases/2026-10-30-github-pages-playtest/P01-pages-deploy/T01-pages-workflow-and-readme.md)
 
-## 상태
-- T04 픽셀 아트와 화면을 완료해 이 계획의 모든 작업을 마치었습니다.
+## Status
+- T01 구현 시작 준비 완료
 
-## 다음 단계
-현재 계획에 남은 작업이 없습니다.
+## Next Step (IMPORTANT)
+T01 청사진을 읽고 `.github/workflows/deploy-pages.yml`과 `README.md`를 구현합니다. 검증 후 Task 상태 및 계획 포인터를 커밋하고 `origin/main`에 푸시해 Pages 배포를 확인합니다.
