@@ -22,24 +22,33 @@ Once validation succeeds:
 1. **Update Task Blueprint**:
    - Change `Status` from `pending` (or `in_progress`) to `done`.
 2. **Git Commit**:
-   - Stage the modified source files and the task blueprint.
-   - Commit using the `커밋 메시지 (Commit)` specified in the blueprint.
+   - Stage only the files named by the active Task blueprint and the Task blueprint itself. Never stage unrelated working-tree changes.
+   - Commit using the `Commit Message` specified in the blueprint. Do not push yet.
 3. **Update `phase.md` Dashboard**:
-   - In the parent `phase.md`, change the task's status from `pending` to `done ✅`.
+   - In the parent `phase.md`, change the completed task's status to `done ✅`.
    - If there is a next task (e.g. `T02`), set its status to `in_progress 🔵`.
    - Update `Progress: done X/Y (active: T02)`.
 4. **Advance `.memory/current.md` Pointer**:
-   - Update `Active Task` link to the next task (`T02`).
-   - Update `Status` to reflect completion of previous task.
-   - Update `Next Step (IMPORTANT)` with the concrete action for the next task.
-   - *(If all tasks in the phase are done, advance `Active Phase` and `Active Task` to the next Phase P02).*
+   - Update `Active Task` to the next pending task and write its concrete action under `Next Step (IMPORTANT)`.
+   - If no task remains, mark the Phase and Plan complete and say that there is no active task.
+5. **Include state synchronization in the Task commit**:
+   - The Task commit created in Step 2 must still be the current local `HEAD` and must not have been pushed.
+   - Stage only the updated parent `phase.md` and `.memory/current.md` (and the Plan file if it changed), then run `git commit --amend --no-edit` so implementation, Task status, Phase progress, and current pointer are one commit with the blueprint's message.
+   - If `HEAD` is not the unpushed Task commit or amend fails, stop and inspect the Git state. Never amend an already-pushed commit.
+6. **Push the validated Task commit**:
+   - Push with `git push origin main`. Never use force push.
+   - If Git rejects the push, inspect the remote changes and preserve the local work before resolving; do not reset or overwrite remote history.
+7. **Wait for GitHub Pages deployment**:
+   - For this project, identify the `Deploy to GitHub Pages` workflow run for the pushed commit and wait for a successful conclusion before reporting the play URL.
+   - If the workflow fails, do not claim the deployment succeeded. Keep the active Task available, fix the cause in a follow-up commit, push again, and verify the new run.
 
 ### Step 4: Report to User
 Report concisely:
 - Completed Task title and commit hash
-- Validation result
+- Validation and Pages deployment result
+- Public play URL after a successful Pages deployment
 - Next Active Task and what will be done next
-- Ask: "다음 Task를 이어서 진행할까요?" (또는 사용자가 자동 연속 모드를 원할 경우 다음 Task 즉시 실행)
+- If the user asked to finish all planned Tasks or continue automatically, proceed to the next Task without asking again. Otherwise, ask whether to continue.
 
 #### 보고 규칙: 초급 개발자용 학습 노트 (필수)
 

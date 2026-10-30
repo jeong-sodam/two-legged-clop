@@ -6,4 +6,4 @@
 ## Phases
 | Phase | Status | Summary | Blueprint |
 | :--- | :--- | :--- | :--- |
-| P01 | `in_progress` | 정적 게임 게시 workflow와 플레이 안내를 추가하고, Task 완료 뒤 자동 푸시·배포 확인이 이어지도록 실행 절차를 정리합니다. | [P01](../phases/2026-10-30-github-pages-playtest/P01-pages-deploy/phase.md) |
+| P01 | `done` | 정적 게임 게시 workflow와 플레이 안내를 추가하고, Task 완료 뒤 자동 푸시·배포 확인이 이어지도록 실행 절차를 정리합니다. | [P01](../phases/2026-10-30-github-pages-playtest/P01-pages-deploy/phase.md) |

@@ -1,6 +1,6 @@
 # Task: T01 GitHub Pages workflow와 플레이 안내
 
-## Status: in_progress
+## Status: done
 
 ## Goal
 `main`에 푸시될 때마다 정적 게임을 GitHub Pages에 배포하는 workflow를 만들고, 저장소 README에서 바로 플레이 URL과 조작법을 찾을 수 있게 합니다.
@@ -70,7 +70,7 @@ Task: T01-pages-workflow-and-readme
 ```
 
 ## Progress
-- [ ] 구현 완료
-- [ ] 검증 통과
-- commit: pending
-- push: pending
+- [x] 구현 완료
+- [x] 검증 통과 (GitHub Actions 성공, 공개 페이지와 JS 모듈 HTTP 200)
+- commit: d7c8a2e
+- push: origin/main

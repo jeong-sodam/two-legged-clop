@@ -1,6 +1,6 @@
 # Task: T02 memory-execute 자동 푸시와 배포 확인
 
-## Status: pending
+## Status: done
 
 ## Goal
 성공적으로 검증된 `/memory-execute` Task를 로컬에서만 커밋하지 않고 `origin/main`에 푸시하며, Pages workflow 성공과 최신 플레이 URL을 확인하게 합니다.
@@ -14,16 +14,21 @@
 ### I01. memory-execute 실행 순서와 푸시 절차
 - Related Files:
   - `.agents/skills/memory-execute/SKILL.md` :: `Execution Workflow`, `Step 3`, `Step 4` — 성공한 Task의 상태 동기화, commit/push, Pages 확인 흐름; modify
+  - `.memory/phases/2026-10-30-github-pages-playtest/P01-pages-deploy/T01-pages-workflow-and-readme.md` :: T01 `Status`와 검증/커밋 기록 — 완료된 Task 결과 보존; modify
+  - `.memory/phases/2026-10-30-github-pages-playtest/P01-pages-deploy/phase.md` :: Task 상태 및 진행률 — Phase 대시보드 동기화; modify
+  - `.memory/current.md` :: Active Task와 다음 단계 — 다음 Task 또는 계획 완료 상태 표시; modify
 
 #### Details
 - **Execution flow / state transitions**:
   1. 기존 Step 1처럼 `.memory/current.md`와 활성 Task 청사진만 읽습니다.
   2. 청사진에 지정된 구현과 검증 명령을 실행합니다. 검증이 실패하면 수정 후 재검증하고, 검증이 통과하기 전에는 완료 처리/커밋/푸시하지 않습니다.
-  3. 검증 성공 후 Task 청사진 상태, 상위 `phase.md` 진행률, `.memory/current.md` 다음 포인터를 먼저 갱신합니다. 마지막 Task인 경우 현재 계획 완료 상태를 기록합니다.
-  4. 변경된 소스와 메모리 상태 파일을 명시적으로 stage합니다. 무관한 수정 파일은 stage하지 않습니다. 이 저장소에서는 기존 tracked 변경 `.vite/deps/_metadata.json`을 포함하지 않습니다.
-  5. 청사진의 Commit Message로 커밋한 뒤 `git push origin main`을 실행합니다. force push는 사용하지 않습니다. push 거부 시 원격 변경을 확인하고 병합/재시도 전에 충돌 상태를 보존합니다.
-  6. push 후 GitHub Actions의 `Deploy to GitHub Pages` 실행을 확인하고 완료까지 기다립니다. 실패하면 원인을 확인하고 수정한 뒤 새 Task 커밋으로 다시 푸시합니다. 실패 상태를 성공으로 보고하지 않습니다.
-  7. 배포 성공 시 `https://jeong-sodam.github.io/two-legged-clop/`을 보고합니다. 이후 사용자는 페이지를 새로고침해 해당 커밋의 게임을 플레이할 수 있습니다.
+  3. 검증 성공 후 활성 Task 청사진의 상태를 `done`으로 변경합니다.
+  4. 변경된 소스와 Task 청사진만 명시적으로 stage하고 청사진의 Commit Message로 로컬 커밋을 만듭니다. 무관한 파일은 stage하지 않습니다. 이 저장소에서는 기존 tracked 변경 `.vite/deps/_metadata.json`을 포함하지 않습니다.
+  5. 그 다음 상위 `phase.md` 진행률과 `.memory/current.md` 포인터를 갱신합니다. 마지막 Task면 Phase 및 Plan을 완료 상태로 바꾸고 current에 완료 상태를 기록합니다.
+  6. 앞 단계에서 만든 현재 Task 커밋은 아직 푸시되지 않았으므로, 갱신한 phase/current 파일을 stage해 해당 커밋에 `git commit --amend --no-edit`로 포함합니다. 이렇게 하면 청사진 지정 커밋 메시지 하나로 구현과 포인터 상태를 함께 보존합니다.
+  7. `git push origin main`을 실행합니다. force push는 사용하지 않습니다. push 거부 시 원격 변경을 확인하고 병합/재시도 전에 충돌 상태를 보존합니다.
+  8. push 후 GitHub Actions의 `Deploy to GitHub Pages` 실행을 확인하고 완료까지 기다립니다. 실패하면 완료로 보고하지 않고, 해당 Task를 다시 활성 상태로 되돌린 뒤 원인을 고치고 새 커밋을 만들어 재시도합니다.
+  9. 배포 성공 시 `https://jeong-sodam.github.io/two-legged-clop/`을 보고합니다. 이후 사용자는 페이지를 새로고침해 해당 커밋의 게임을 플레이할 수 있습니다.
 - **Automatic continuation**: 계획에 다음 Task가 있으면 배포 성공 후 사용자의 재확인을 기다리지 않고 다음 Task를 진행합니다. 사용자가 플레이 피드백이나 중단 요청을 주면 그 지시에 따라 현재 작업 흐름을 조정합니다.
 - **Reporting**: 보고에 Task 커밋 해시, push 결과, Pages workflow 결과, 플레이 URL, 다음 활성 Task를 포함합니다.
 - 기존 학습 노트와 요청 밖 결함 보고 규칙은 보존합니다.
@@ -54,7 +59,7 @@ Task: T02-memory-execute-publish-flow
 ```
 
 ## Progress
-- [ ] 구현 완료
-- [ ] 검증 통과
-- commit: pending
-- push: pending
+- [x] 구현 완료
+- [x] 검증 통과
+- commit: recorded in Git history
+- push: origin/main; GitHub Pages deploys on push
