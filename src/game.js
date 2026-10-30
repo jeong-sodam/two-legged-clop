@@ -1,8 +1,9 @@
-import { createHazard, difficultyForScore, intersects } from "./obstacles.js";
+import { createHazard, difficultyForDistance, intersects, MAPS } from "./obstacles.js";
 import { CONTROL_KEYS, createControlMapping } from "./input.js";
 
 const GROUND_Y = 390;
 const LIMB_NAMES = Object.freeze(["leftArm", "rightArm", "leftLeg", "rightLeg"]);
+const MOVING_HAZARD_MOTIONS = new Set(["arc", "sway", "walker", "roll", "gust", "swing", "cart"]);
 
 function createPlayer() {
   return {
@@ -27,7 +28,8 @@ export class Game {
     this.prepareSecondsRemaining = 0;
     this.prepareElapsedSeconds = 0;
     this.previousMapping = this.loadPreviousMapping();
-    this.distance = 0;
+    this.map = null;
+    this.nextHazardDistance = 0;
     this.elapsedSeconds = 0;
     this.lastTimestamp = null;
     this.animationFrameId = null;
@@ -35,12 +37,9 @@ export class Game {
     this.rng = Math.random;
     this.hazards = [];
     this.score = 0;
-    this.distance = 0;
-    this.distanceRemainder = 0;
     this.obstaclesAvoided = 0;
     this.bestScore = this.loadBestScore();
     this.nextHazardId = 1;
-    this.spawnTimer = this.randomSpawnDelay();
     this.player = createPlayer();
     this.frame = this.frame.bind(this);
   }
@@ -110,6 +109,7 @@ export class Game {
     this.input.clear();
     this.input.setControlMapping(this.controlMapping);
     this.savePreviousMapping(mode, this.controlMapping);
+    this.map = MAPS[Math.floor(this.rng() * MAPS.length)];
     this.state = "memorize";
     this.prepareSecondsRemaining = 10;
     this.prepareElapsedSeconds = 0;
@@ -118,11 +118,10 @@ export class Game {
     this.hazards = [];
     this.score = 0;
     this.distance = 0;
-    this.distanceRemainder = 0;
     this.obstaclesAvoided = 0;
     this.nextHazardId = 1;
     this.player = createPlayer();
-    this.spawnTimer = this.randomSpawnDelay();
+    this.nextHazardDistance = this.randomSpawnGap();
   }
 
   finishRun() {
@@ -221,7 +220,13 @@ export class Game {
 
   getHeadHitbox() {
     const { x, y } = this.player;
-    return { x: x + 30, y: y - 124, width: 39, height: 36 };
+    return { x: x + 30, y: y - 124 + this.getHeadOffset(), width: 39, height: 36 };
+  }
+
+  getHeadOffset() {
+    const limbs = this.player.limbs;
+    return (limbs.leftArm.lift + limbs.rightArm.lift) * 10
+      + (limbs.leftLeg.lift + limbs.rightLeg.lift) * 3;
   }
 
   getBodyHitbox() {
@@ -255,52 +260,60 @@ export class Game {
     this.player.fallProgress = 0;
   }
 
-  randomSpawnDelay() {
-    const { spawnMin, spawnMax } = difficultyForScore(this.score ?? 0);
-    return spawnMin + this.rng() * (spawnMax - spawnMin);
+  randomSpawnGap(distance = this.distance) {
+    const { minGap, maxGap } = difficultyForDistance(distance, this.mode ?? "normal");
+    return minGap + this.rng() * (maxGap - minGap);
   }
 
   spawnHazard() {
-    const difficulty = difficultyForScore(this.score);
-    const type = difficulty.allowedTypes[Math.floor(this.rng() * difficulty.allowedTypes.length)];
-    const sudden = difficulty.level >= 3 && this.rng() < 0.2;
-    const x = sudden ? 640 : this.canvas.width + 40;
-    const hazard = createHazard(type, x, 390, this.rng);
+    if (!this.map) return;
+    const difficulty = difficultyForDistance(this.distance, this.mode);
+    const types = this.map.hazardTypes;
+    const type = types[Math.floor(this.rng() * types.length)];
+    const hazard = createHazard(type, this.canvas.width + 60, GROUND_Y, this.rng);
     hazard.id = this.nextHazardId++;
-    hazard.sudden = sudden;
-    hazard.warningDuration = sudden ? 0.35 : 0;
-    hazard.vx = -difficulty.speed;
+    if (MOVING_HAZARD_MOTIONS.has(hazard.motion)) hazard.vx = -difficulty.movingHazardSpeed;
     this.hazards.push(hazard);
   }
 
   updateCourse(deltaSeconds) {
-    this.spawnTimer -= deltaSeconds;
-    if (this.spawnTimer <= 0) {
+    if (this.map && this.distance >= this.nextHazardDistance) {
       this.spawnHazard();
-      this.spawnTimer += this.randomSpawnDelay();
+      this.nextHazardDistance = this.distance + this.randomSpawnGap(this.distance);
     }
 
     for (const hazard of this.hazards) {
       hazard.age += deltaSeconds;
-      hazard.x += hazard.vx * deltaSeconds;
-      if (hazard.type === "thrown") {
-        hazard.y = hazard.baseY + Math.sin(hazard.age * 5 + hazard.phase) * 18;
+      hazard.x += (hazard.vx - this.player.forwardSpeed) * deltaSeconds;
+      let motionOffset = 0;
+      if (hazard.motion === "arc") {
+        hazard.y = hazard.baseY + Math.sin(hazard.age * 4 + hazard.phase) * 22;
+      } else if (hazard.motion === "sway" || hazard.motion === "swing") {
+        hazard.y = hazard.baseY + Math.sin(hazard.age * 3.5 + hazard.phase) * 9;
+        if (hazard.motion === "swing") motionOffset = Math.sin(hazard.age * 3 + hazard.phase) * 22;
+      } else if (hazard.motion === "walker") {
+        hazard.y = hazard.baseY + Math.abs(Math.sin(hazard.age * 8 + hazard.phase)) * 4;
+      } else if (hazard.motion === "turnstile") {
+        motionOffset = Math.sin(hazard.age * 6 + hazard.phase) * 10;
+      } else if (hazard.motion === "gust") {
+        hazard.y = hazard.baseY + Math.sin(hazard.age * 4 + hazard.phase) * 13;
       }
+      hazard.x += motionOffset - hazard.motionOffset;
+      hazard.motionOffset = motionOffset;
+      hazard.armed = hazard.age >= hazard.warningDuration;
+      hazard.bounds = { x: hazard.x, y: hazard.y, width: hazard.width, height: hazard.height };
 
-      const warningOver = !hazard.sudden || hazard.age >= hazard.warningDuration;
-      if (!hazard.resolved && warningOver) {
-        const bounds = { x: hazard.x, y: hazard.y, width: hazard.width, height: hazard.height };
-        if (intersects(this.getHeadHitbox(), bounds)) {
+      if (!hazard.resolved && hazard.armed) {
+        if (intersects(this.getHeadHitbox(), hazard.bounds)) {
           hazard.resolved = true;
           this.beginFall();
           return;
         }
-        const bodyContact = intersects(this.getBodyHitbox(), bounds)
-          || this.getLimbHitboxes().some((limb) => intersects(limb, bounds));
+        const bodyContact = intersects(this.getBodyHitbox(), hazard.bounds)
+          || this.getLimbHitboxes().some((limb) => intersects(limb, hazard.bounds));
         if (bodyContact) {
           hazard.resolved = true;
-          this.player.forwardSpeed *= 0.45;
-          this.player.bodyWobble = this.clamp(this.player.bodyWobble + 0.08, -0.18, 0.18);
+          this.applyHazardEffect(hazard.effect);
         }
       }
 
@@ -309,7 +322,22 @@ export class Game {
         this.obstaclesAvoided += 1;
       }
     }
-    this.hazards = this.hazards.filter((hazard) => hazard.x + hazard.width >= -40);
+    this.hazards = this.hazards.filter((hazard) => hazard.x + hazard.width >= -120);
+  }
+
+  applyHazardEffect(effect) {
+    const player = this.player;
+    if (effect === "knockback") {
+      this.distance = Math.max(0, this.distance - 35);
+      this.score = Math.floor(this.distance);
+      player.forwardSpeed = 0;
+      player.bodyWobble = this.clamp(player.bodyWobble + 0.1, -0.18, 0.18);
+    } else if (effect === "slow") {
+      player.forwardSpeed *= 0.5;
+    } else if (effect === "slip") {
+      player.forwardSpeed *= 0.3;
+      player.bodyWobble = this.clamp(player.bodyWobble + 0.08, -0.18, 0.18);
+    }
   }
 
   clamp(value, min, max) {
@@ -436,21 +464,25 @@ export class Game {
 
   drawHazards(ctx) {
     for (const hazard of this.hazards) {
-      if (hazard.sudden && hazard.age < hazard.warningDuration) {
-        ctx.fillStyle = Math.floor(hazard.age * 18) % 2 === 0 ? "#fff0a8" : "#e54b52";
-      } else {
-        ctx.fillStyle = hazard.type === "barrier" ? "#8b5637"
-          : hazard.type === "overhead" ? "#818b32" : "#ee8138";
-      }
-      ctx.fillRect(hazard.x, hazard.y, hazard.width, hazard.height);
+      const colors = {
+        "slippery-log": "#8b5637", "monkey-banana": "#f0bc4e", "ground-spear": "#d9d4cc",
+        "knockback-snake": "#79a342", commuter: "#648ec2", "train-edge": "#d26059",
+        turnstile: "#8a9a9e", conveyor: "#9a7b5c", piston: "#bd554d",
+        "rolling-gear": "#99949a", gust: "#8fd1e5", "swinging-sign": "#e1a24a",
+        "low-wire": "#e7dfad", puddle: "#65b6d2", cart: "#bd725a", "steam-vent": "#d5d0cf",
+      };
+      const bounds = hazard.bounds;
+      ctx.fillStyle = !hazard.armed
+        ? (Math.floor(hazard.age * 12) % 2 === 0 ? "#fff0a8" : "#e54b52")
+        : (colors[hazard.type] ?? "#ee8138");
+      ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
       ctx.fillStyle = "rgba(40, 35, 59, 0.45)";
-      if (hazard.type === "barrier") {
-        ctx.fillRect(hazard.x + 5, hazard.y + 8, 6, hazard.height - 8);
-        ctx.fillRect(hazard.x + 22, hazard.y + 8, 6, hazard.height - 8);
-      } else if (hazard.type === "overhead") {
-        ctx.fillRect(hazard.x + 8, hazard.y + hazard.height - 7, hazard.width - 16, 7);
+      if (hazard.motion === "trap" && !hazard.armed) {
+        ctx.fillRect(bounds.x - 4, GROUND_Y - 5, bounds.width + 8, 4);
+      } else if (hazard.width > 48) {
+        ctx.fillRect(bounds.x + 6, bounds.y + 7, Math.max(4, bounds.width - 12), 5);
       } else {
-        ctx.fillRect(hazard.x + 6, hazard.y + 6, 6, 6);
+        ctx.fillRect(bounds.x + 6, bounds.y + 6, Math.min(10, bounds.width - 8), 6);
       }
     }
   }
@@ -502,17 +534,18 @@ export class Game {
     ctx.fillRect(23, -75, 7, 20);
     ctx.fillStyle = "#d6b46f";
     ctx.fillRect(-13, -54, 51, 5);
+    const headTop = -115 + this.getHeadOffset();
     ctx.fillStyle = "#d89d72";
-    ctx.fillRect(28, -94, 15, 15);
+    ctx.fillRect(28, headTop + 21, 15, 15);
     ctx.fillStyle = "#f0c29d";
-    ctx.fillRect(33, -115, 35, 27);
+    ctx.fillRect(33, headTop, 35, 27);
     ctx.fillStyle = "#30283b";
-    ctx.fillRect(30, -119, 35, 9);
-    ctx.fillRect(35, -124, 23, 7);
+    ctx.fillRect(30, headTop - 4, 35, 9);
+    ctx.fillRect(35, headTop - 9, 23, 7);
     ctx.fillStyle = "#201e2e";
-    ctx.fillRect(57, -105, 4, 4);
+    ctx.fillRect(57, headTop + 10, 4, 4);
     ctx.fillStyle = "#f4e5ca";
-    ctx.fillRect(65, -99, 4, 3);
+    ctx.fillRect(65, headTop + 16, 4, 3);
     drawArm("leftArm", 12, 1);
     drawLeg("leftLeg", -8, 1);
     ctx.restore();
@@ -529,7 +562,7 @@ export class Game {
   }
 
   drawHud(ctx) {
-    const { level } = difficultyForScore(this.score);
+    const { level } = difficultyForDistance(this.distance, this.mode ?? "normal");
     ctx.fillStyle = "rgba(35, 27, 47, 0.76)";
     ctx.fillRect(16, 14, 252, 70);
     ctx.fillRect(this.canvas.width - 244, 14, 228, 70);
@@ -546,7 +579,7 @@ export class Game {
     ctx.textAlign = "right";
     ctx.fillText("거리  " + this.score, this.canvas.width - 28, 34);
     ctx.fillText("최고  " + this.bestScore + "   레벨 " + level, this.canvas.width - 28, 56);
-    ctx.fillText("회피  " + this.obstaclesAvoided, this.canvas.width - 28, 78);
+    ctx.fillText(this.map ? this.map.name : "", this.canvas.width - 28, 78);
     ctx.textAlign = "start";
 
     const labels = { leftArm: "왼팔", rightArm: "오른팔", leftLeg: "왼다리", rightLeg: "오른다리" };
