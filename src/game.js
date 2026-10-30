@@ -1,6 +1,20 @@
 import { createHazard, difficultyForScore, intersects } from "./obstacles.js";
 import { CONTROL_KEYS, createControlMapping } from "./input.js";
 
+const GROUND_Y = 390;
+const LIMB_NAMES = Object.freeze(["leftArm", "rightArm", "leftLeg", "rightLeg"]);
+
+function createPlayer() {
+  return {
+    x: 220,
+    y: GROUND_Y,
+    forwardSpeed: 0,
+    bodyWobble: 0,
+    fallProgress: 0,
+    limbs: Object.fromEntries(LIMB_NAMES.map((limb) => [limb, { raised: false, lift: 0, swing: 0 }])),
+  };
+}
+
 export class Game {
   constructor(canvas, context, input) {
     this.canvas = canvas;
@@ -13,7 +27,7 @@ export class Game {
     this.prepareSecondsRemaining = 0;
     this.prepareElapsedSeconds = 0;
     this.previousMapping = this.loadPreviousMapping();
-    this.temporaryLimbRaised = { leftArm: false, rightArm: false, leftLeg: false, rightLeg: false };
+    this.distance = 0;
     this.elapsedSeconds = 0;
     this.lastTimestamp = null;
     this.animationFrameId = null;
@@ -27,19 +41,7 @@ export class Game {
     this.bestScore = this.loadBestScore();
     this.nextHazardId = 1;
     this.spawnTimer = this.randomSpawnDelay();
-    this.player = {
-      x: 220,
-      y: 390,
-      vx: 0,
-      vy: 0,
-      leftFoot: 0.5,
-      rightFoot: 0.5,
-      leftFootVelocity: 0,
-      rightFootVelocity: 0,
-      balance: 0,
-      grounded: true,
-      crouching: false,
-    };
+    this.player = createPlayer();
     this.frame = this.frame.bind(this);
   }
 
@@ -62,7 +64,7 @@ export class Game {
 
   loadBestScore() {
     try {
-      const storedScore = Number(localStorage.getItem("twoLeggedClopBestScore"));
+      const storedScore = Number(localStorage.getItem("quadrupedClopBestDistance"));
       return Number.isFinite(storedScore) && storedScore >= 0 ? Math.floor(storedScore) : 0;
     } catch {
       return 0;
@@ -119,13 +121,7 @@ export class Game {
     this.distanceRemainder = 0;
     this.obstaclesAvoided = 0;
     this.nextHazardId = 1;
-    this.temporaryLimbRaised = { leftArm: false, rightArm: false, leftLeg: false, rightLeg: false };
-    this.player = {
-      x: 220, y: 390, vx: 0, vy: 0,
-      leftFoot: 0.5, rightFoot: 0.5,
-      leftFootVelocity: 0, rightFootVelocity: 0,
-      balance: 0, grounded: true, crouching: false,
-    };
+    this.player = createPlayer();
     this.spawnTimer = this.randomSpawnDelay();
   }
 
@@ -134,7 +130,7 @@ export class Game {
     if (this.score <= this.bestScore) return;
     this.bestScore = this.score;
     try {
-      localStorage.setItem("twoLeggedClopBestScore", String(this.bestScore));
+      localStorage.setItem("quadrupedClopBestDistance", String(this.bestScore));
     } catch {
       // Keep the game running when browser storage is blocked.
     }
@@ -175,74 +171,88 @@ export class Game {
       this.input.consumePressed("Enter");
       this.input.consumePressed("Space");
       this.fallElapsedSeconds += deltaSeconds;
+      this.player.fallProgress = this.clamp(this.fallElapsedSeconds / 0.65, 0, 1);
       if (this.fallElapsedSeconds >= 0.65) this.finishRun();
       return;
     }
     if (this.state !== "playing") return;
-    this.updateLegs(deltaSeconds);
-    this.updateMovement(deltaSeconds);
-    this.updateBalance(deltaSeconds);
-    if (Math.abs(this.player.balance) >= 1) {
-      this.state = "falling";
-      this.fallElapsedSeconds = 0;
-      return;
-    }
+    const liftTransitions = this.updateLimbs(deltaSeconds);
+    this.updateCrawlMovement(deltaSeconds, liftTransitions);
     this.updateCourse(deltaSeconds);
     this.elapsedSeconds += deltaSeconds;
   }
 
-  updateLegs(deltaSeconds) {
-    const { input, player } = this;
-    const limbNames = ["leftArm", "rightArm", "leftLeg", "rightLeg"];
-    for (const limb of limbNames) {
-      const controls = this.controlMapping[limb];
+  updateLimbs(deltaSeconds) {
+    const transitions = [];
+    for (const limbName of LIMB_NAMES) {
+      const limb = this.player.limbs[limbName];
+      const controls = this.controlMapping[limbName];
+      const wasRaised = limb.raised;
       if (this.mode === "normal") {
-        this.temporaryLimbRaised[limb] = input.isDown(controls.raise);
+        limb.raised = this.input.isDown(controls.raise);
       } else {
-        if (input.consumePressed(controls.raise)) this.temporaryLimbRaised[limb] = true;
-        if (input.consumePressed(controls.lower)) this.temporaryLimbRaised[limb] = false;
+        if (this.input.consumePressed(controls.raise)) limb.raised = true;
+        if (this.input.consumePressed(controls.lower)) limb.raised = false;
       }
-    }
 
-    const rightTarget = this.temporaryLimbRaised.rightLeg ? 1 : 0;
-    const leftTarget = this.temporaryLimbRaised.leftLeg ? 1 : 0;
-    player.rightFootVelocity = Math.sign(rightTarget - player.rightFoot) * 2.8;
-    player.leftFootVelocity = Math.sign(leftTarget - player.leftFoot) * 2.8;
-    player.rightFoot = this.clamp(player.rightFoot + player.rightFootVelocity * deltaSeconds, 0, 1);
-    player.leftFoot = this.clamp(player.leftFoot + player.leftFootVelocity * deltaSeconds, 0, 1);
+      const target = limb.raised ? 1 : 0;
+      const rate = limb.raised ? 7.5 : 9;
+      limb.lift = Math.max(0, Math.min(1, limb.lift + Math.sign(target - limb.lift) * rate * deltaSeconds));
+      if (Math.abs(limb.lift - target) < 0.02) limb.lift = target;
+      limb.swing += deltaSeconds * (4 + this.player.forwardSpeed * 0.015);
+      if (!wasRaised && limb.raised) transitions.push(limbName);
+    }
+    return transitions;
   }
 
-  updateMovement(deltaSeconds) {
-    const { input, player } = this;
-    const movingLeft = input.isDown("KeyA");
-    const movingRight = input.isDown("KeyD");
+  updateCrawlMovement(deltaSeconds, liftTransitions) {
+    const player = this.player;
+    player.forwardSpeed += liftTransitions.length * 42;
+    player.forwardSpeed = Math.max(0, player.forwardSpeed - 95 * deltaSeconds);
+    player.forwardSpeed = Math.min(260, player.forwardSpeed);
+    const leftRaised = Number(player.limbs.leftArm.raised) + Number(player.limbs.leftLeg.raised);
+    const rightRaised = Number(player.limbs.rightArm.raised) + Number(player.limbs.rightLeg.raised);
+    const raisedCount = LIMB_NAMES.reduce((count, limb) => count + Number(player.limbs[limb].raised), 0);
+    const wobbleTarget = this.clamp((leftRaised - rightRaised) * 0.045 + (raisedCount - 2) * 0.02, -0.18, 0.18);
+    player.bodyWobble += (wobbleTarget - player.bodyWobble) * Math.min(1, deltaSeconds * 6);
+    this.distance += player.forwardSpeed * deltaSeconds;
+    this.score = Math.floor(this.distance);
+  }
 
-    if (movingLeft !== movingRight) {
-      player.vx = movingLeft ? -150 : 150;
-    } else {
-      const friction = 500 * deltaSeconds;
-      player.vx = Math.abs(player.vx) <= friction
-        ? 0
-        : player.vx - Math.sign(player.vx) * friction;
-    }
+  getHeadHitbox() {
+    const { x, y } = this.player;
+    return { x: x + 30, y: y - 124, width: 39, height: 36 };
+  }
 
-    player.x = this.clamp(player.x + player.vx * deltaSeconds, 90, 420);
-    player.crouching = input.isDown("KeyS");
+  getBodyHitbox() {
+    const { x, y } = this.player;
+    return { x: x - 12, y: y - 80, width: 58, height: 32 };
+  }
 
-    if (input.consumePressed("KeyW") && player.grounded) {
-      player.vy = -430;
-      player.grounded = false;
-    }
+  getLimbHitboxes() {
+    const { x, y, limbs } = this.player;
+    const arm = (limb, boundsX) => ({
+      limb,
+      x: x + boundsX,
+      y: y - 76 - limbs[limb].lift * 27,
+      width: 38,
+      height: 78,
+    });
+    const leg = (limb, boundsX) => ({
+      limb,
+      x: x + boundsX,
+      y: y - 62 - limbs[limb].lift * 24,
+      width: 36,
+      height: 64,
+    });
+    return [arm("leftArm", 0), arm("rightArm", -31), leg("leftLeg", -15), leg("rightLeg", -49)];
+  }
 
-    if (!player.grounded) {
-      player.vy += 1100 * deltaSeconds;
-      player.y += player.vy * deltaSeconds;
-      if (player.y >= 390) {
-        player.y = 390;
-        player.vy = 0;
-        player.grounded = true;
-      }
-    }
+  beginFall() {
+    if (this.state !== "playing") return;
+    this.state = "falling";
+    this.fallElapsedSeconds = 0;
+    this.player.fallProgress = 0;
   }
 
   randomSpawnDelay() {
@@ -264,28 +274,11 @@ export class Game {
   }
 
   updateCourse(deltaSeconds) {
-    const difficulty = difficultyForScore(this.score);
-    this.distance += difficulty.speed * deltaSeconds;
-    this.distanceRemainder += difficulty.speed * deltaSeconds;
-    const distancePoints = Math.floor(this.distanceRemainder / 10);
-    if (distancePoints > 0) {
-      this.score += distancePoints;
-      this.distanceRemainder -= distancePoints * 10;
-    }
-
     this.spawnTimer -= deltaSeconds;
     if (this.spawnTimer <= 0) {
       this.spawnHazard();
       this.spawnTimer += this.randomSpawnDelay();
     }
-
-    const player = this.player;
-    const playerRect = {
-      x: player.x - 18,
-      y: player.y - (player.crouching ? 45 : 85),
-      width: 36,
-      height: player.crouching ? 45 : 85,
-    };
 
     for (const hazard of this.hazards) {
       hazard.age += deltaSeconds;
@@ -295,33 +288,28 @@ export class Game {
       }
 
       const warningOver = !hazard.sudden || hazard.age >= hazard.warningDuration;
-      if (!hazard.resolved && warningOver && intersects(playerRect, hazard)) {
-        hazard.resolved = true;
-        player.vx = -80;
-        player.balance = this.clamp(
-          player.balance + (player.x < hazard.x + hazard.width / 2 ? 0.16 : -0.16),
-          -1.2,
-          1.2,
-        );
+      if (!hazard.resolved && warningOver) {
+        const bounds = { x: hazard.x, y: hazard.y, width: hazard.width, height: hazard.height };
+        if (intersects(this.getHeadHitbox(), bounds)) {
+          hazard.resolved = true;
+          this.beginFall();
+          return;
+        }
+        const bodyContact = intersects(this.getBodyHitbox(), bounds)
+          || this.getLimbHitboxes().some((limb) => intersects(limb, bounds));
+        if (bodyContact) {
+          hazard.resolved = true;
+          this.player.forwardSpeed *= 0.45;
+          this.player.bodyWobble = this.clamp(this.player.bodyWobble + 0.08, -0.18, 0.18);
+        }
       }
 
-      if (!hazard.passed && !hazard.resolved && hazard.x + hazard.width < player.x) {
+      if (!hazard.passed && !hazard.resolved && hazard.x + hazard.width < this.player.x) {
         hazard.passed = true;
         this.obstaclesAvoided += 1;
-        this.score += 100;
       }
     }
     this.hazards = this.hazards.filter((hazard) => hazard.x + hazard.width >= -40);
-  }
-  updateBalance(deltaSeconds) {
-    const { player } = this;
-    const heightDifference = player.rightFoot - player.leftFoot;
-    let liftImpulse = 0;
-    if (player.rightFootVelocity > 0) liftImpulse += 0.22;
-    if (player.leftFootVelocity > 0) liftImpulse -= 0.22;
-
-    player.balance += (heightDifference * 0.9 - player.balance * 0.35 + liftImpulse) * deltaSeconds;
-    player.balance = this.clamp(player.balance, -1.2, 1.2);
   }
 
   clamp(value, min, max) {
@@ -469,68 +457,75 @@ export class Game {
 
   drawPlayer(ctx) {
     const { player } = this;
-    const fallingProgress = this.state === "falling"
-      ? this.clamp(this.fallElapsedSeconds / 0.65, 0, 1)
-      : 0;
-    const leanDirection = Math.sign(player.balance) || 1;
-    const torsoTop = player.crouching ? -112 : -126;
-    const headTop = player.crouching ? -140 : -154;
-    const hipY = player.crouching ? -50 : -55;
-    const leftLift = Math.round(player.leftFoot * 34);
-    const rightLift = Math.round(player.rightFoot * 34);
+    const fall = player.fallProgress;
+    const limbs = player.limbs;
     ctx.save();
     ctx.translate(player.x, player.y);
-    ctx.translate(0, -75);
-    ctx.rotate(fallingProgress * leanDirection * Math.PI / 2);
-    ctx.translate(0, 75);
-    ctx.globalAlpha = 1 - fallingProgress * 0.55;
+    ctx.translate(10, -66);
+    ctx.rotate(player.bodyWobble + fall * 1.05);
+    ctx.translate(-10, 66);
+    ctx.globalAlpha = 1 - fall * 0.35;
+
+    const drawArm = (limb, shoulderX, direction) => {
+      const lift = limbs[limb].lift;
+      const fold = fall * 17;
+      const elbowX = shoulderX + direction * (8 - fold);
+      const elbowY = -34 - lift * 13 + fold * 0.3;
+      const handX = shoulderX + direction * (13 - fold * 0.75);
+      const handY = -4 - lift * 27 + fall * 31;
+      this.drawPixelSegment(ctx, shoulderX, -64, elbowX, elbowY, "#46334a", 11);
+      this.drawPixelSegment(ctx, elbowX, elbowY, handX, handY, "#d89d72", 8);
+      ctx.fillStyle = "#f0bc92";
+      ctx.fillRect(Math.round(handX - 4), Math.round(handY - 3), 8, 6);
+    };
+    const drawLeg = (limb, hipX, direction) => {
+      const lift = limbs[limb].lift;
+      const swing = Math.sin(limbs[limb].swing) * (0.08 + player.forwardSpeed / 1800);
+      const kneeX = hipX + direction * (11 + swing * 9);
+      const kneeY = -27 - lift * 12;
+      const footX = hipX + direction * (16 + swing * 16);
+      const footY = -2 - lift * 24 + fall * 18;
+      this.drawPixelSegment(ctx, hipX, -55, kneeX, kneeY, "#383148", 12);
+      this.drawPixelSegment(ctx, kneeX, kneeY, footX, footY, "#51435b", 10);
+      ctx.fillStyle = "#30283b";
+      ctx.fillRect(Math.round(footX - 9), Math.round(footY - 2), 18, 7);
+    };
+
+    drawLeg("rightLeg", -22, -1);
+    drawArm("rightArm", -7, -1);
+    ctx.fillStyle = "#e7c2a1";
+    ctx.fillRect(-12, -77, 58, 31);
+    ctx.fillStyle = "#302e43";
+    ctx.fillRect(-17, -82, 59, 31);
+    ctx.fillStyle = "#78627a";
+    ctx.fillRect(-8, -75, 36, 5);
+    ctx.fillRect(23, -75, 7, 20);
+    ctx.fillStyle = "#d6b46f";
+    ctx.fillRect(-13, -54, 51, 5);
     ctx.fillStyle = "#d89d72";
-    ctx.fillRect(-9, headTop + 18, 18, 10);
-    ctx.fillStyle = "#38273a";
-    ctx.fillRect(-14, headTop + 2, 28, 12);
-    ctx.fillRect(-12, headTop - 3, 22, 8);
-    ctx.fillStyle = "#f1d9b5";
-    ctx.fillRect(3, headTop + 13, 4, 3);
-    ctx.fillStyle = "#d8cfb8";
-    ctx.fillRect(-10, torsoTop + 5, 20, 55);
-    ctx.fillStyle = "#343044";
-    ctx.fillRect(-19, torsoTop, 38, 68);
-    ctx.fillStyle = "#6a5265";
-    ctx.fillRect(-13, torsoTop + 8, 5, 45);
-    ctx.fillRect(8, torsoTop + 8, 5, 45);
-    ctx.fillStyle = "#c5a66f";
-    ctx.fillRect(-18, torsoTop + 61, 36, 6);
-    if (player.crouching) {
-      ctx.fillStyle = "#d89d72";
-      ctx.fillRect(-27, torsoTop + 25, 10, 30);
-      ctx.fillRect(17, torsoTop + 25, 10, 30);
-    } else {
-      ctx.fillStyle = "#343044";
-      ctx.fillRect(-26, torsoTop + 10, 9, 48);
-      ctx.fillRect(17, torsoTop + 10, 9, 48);
-      ctx.fillStyle = "#d89d72";
-      ctx.fillRect(-27, torsoTop + 54, 10, 9);
-      ctx.fillRect(17, torsoTop + 54, 10, 9);
-    }
-    this.drawLeg(ctx, -10, hipY, leftLift);
-    this.drawLeg(ctx, 2, hipY, rightLift);
-    ctx.fillStyle = "#29283a";
-    ctx.fillRect(-16, -leftLift - 7, 18, 7);
-    ctx.fillRect(0, -rightLift - 7, 18, 7);
-    ctx.fillStyle = "#a58a59";
-    ctx.fillRect(-16, -leftLift - 7, 5, 2);
-    ctx.fillRect(0, -rightLift - 7, 5, 2);
+    ctx.fillRect(28, -94, 15, 15);
+    ctx.fillStyle = "#f0c29d";
+    ctx.fillRect(33, -115, 35, 27);
+    ctx.fillStyle = "#30283b";
+    ctx.fillRect(30, -119, 35, 9);
+    ctx.fillRect(35, -124, 23, 7);
+    ctx.fillStyle = "#201e2e";
+    ctx.fillRect(57, -105, 4, 4);
+    ctx.fillStyle = "#f4e5ca";
+    ctx.fillRect(65, -99, 4, 3);
+    drawArm("leftArm", 12, 1);
+    drawLeg("leftLeg", -8, 1);
     ctx.restore();
   }
 
-  drawLeg(ctx, x, hipY, lift) {
-    const footY = -lift - 7;
-    const kneeY = Math.round((hipY + footY) / 2);
-    ctx.fillStyle = "#343044";
-    ctx.fillRect(x, hipY, 10, Math.max(3, kneeY - hipY));
-    ctx.fillRect(x + 1, kneeY, 8, Math.max(3, footY - kneeY));
-    ctx.fillStyle = "#4b465e";
-    ctx.fillRect(x + 2, hipY + 4, 3, Math.max(2, kneeY - hipY - 8));
+  drawPixelSegment(ctx, startX, startY, endX, endY, color, width) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = "square";
+    ctx.beginPath();
+    ctx.moveTo(Math.round(startX), Math.round(startY));
+    ctx.lineTo(Math.round(endX), Math.round(endY));
+    ctx.stroke();
   }
 
   drawHud(ctx) {
@@ -541,22 +536,32 @@ export class Game {
     ctx.fillStyle = "#fff0a8";
     ctx.font = "bold 16px monospace";
     ctx.textAlign = "left";
-    ctx.fillText("\uADE0\uD615", 28, 34);
+    ctx.fillText("속도", 28, 34);
     ctx.fillStyle = "#28233b";
     ctx.fillRect(28, 43, 210, 12);
-    const center = 133;
-    const amount = Math.round(Math.min(1, Math.abs(this.player.balance)) * 105);
-    const color = Math.abs(this.player.balance) >= 0.85 ? "#e54b52"
-      : Math.abs(this.player.balance) >= 0.65 ? "#f0bc4e" : "#79c65a";
-    ctx.fillStyle = color;
-    ctx.fillRect(this.player.balance < 0 ? center - amount : center, 43, amount, 12);
+    ctx.fillStyle = "#79c65a";
+    ctx.fillRect(28, 43, Math.round(Math.min(1, this.player.forwardSpeed / 260) * 210), 12);
     ctx.fillStyle = "#fff0a8";
-    ctx.fillRect(center - 2, 40, 4, 18);
     ctx.fillStyle = "#fff0a8";
     ctx.textAlign = "right";
-    ctx.fillText("\uC810\uC218  " + this.score, this.canvas.width - 28, 34);
-    ctx.fillText("\uCD5C\uACE0  " + this.bestScore + "   \uB808\uBCA8 " + level, this.canvas.width - 28, 56);
-    ctx.fillText("\uD68C\uD53C  " + this.obstaclesAvoided, this.canvas.width - 28, 78);
+    ctx.fillText("거리  " + this.score, this.canvas.width - 28, 34);
+    ctx.fillText("최고  " + this.bestScore + "   레벨 " + level, this.canvas.width - 28, 56);
+    ctx.fillText("회피  " + this.obstaclesAvoided, this.canvas.width - 28, 78);
+    ctx.textAlign = "start";
+
+    const labels = { leftArm: "왼팔", rightArm: "오른팔", leftLeg: "왼다리", rightLeg: "오른다리" };
+    LIMB_NAMES.forEach((limb, index) => {
+      const x = 14 + index * 236;
+      const raised = this.player.limbs[limb].raised;
+      ctx.fillStyle = "rgba(35, 27, 47, 0.9)";
+      ctx.fillRect(x, 482, 224, 42);
+      ctx.fillStyle = raised ? "#f0bc4e" : "#8a8297";
+      ctx.fillRect(x + 10, 494, 14, 14);
+      ctx.fillStyle = "#fff0a8";
+      ctx.font = "bold 14px monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(labels[limb] + " · " + (raised ? "들림" : "내려감"), x + 34, 506);
+    });
     ctx.textAlign = "start";
   }
 
