@@ -1,5 +1,6 @@
 import { createHazard, difficultyForDistance, intersects, MAPS } from "./obstacles.js";
 import { CONTROL_KEYS, createControlMapping } from "./input.js";
+import { Renderer } from "./renderer.js";
 
 const GROUND_Y = 390;
 const LIMB_NAMES = Object.freeze(["leftArm", "rightArm", "leftLeg", "rightLeg"]);
@@ -20,6 +21,7 @@ export class Game {
   constructor(canvas, context, input) {
     this.canvas = canvas;
     this.context = context;
+    this.renderer = new Renderer(canvas, context);
     this.input = input;
     this.state = "ready";
     this.selectedMode = "normal";
@@ -345,15 +347,19 @@ export class Game {
   }
 
   render() {
-    const { context: ctx, canvas } = this;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    this.drawSky(ctx);
-    this.drawHills(ctx);
-    this.drawTree(ctx);
-    this.drawGround(ctx);
-    this.drawHazards(ctx);
-    this.drawPlayer(ctx);
-    this.drawHud(ctx);
+    this.renderer.render({
+      state: this.state,
+      mode: this.mode,
+      map: this.map,
+      player: this.player,
+      hazards: this.hazards,
+      score: this.score,
+      bestScore: this.bestScore,
+      distance: this.distance ?? 0,
+      elapsedSeconds: this.elapsedSeconds,
+      prepareSecondsRemaining: this.prepareSecondsRemaining,
+      controlMapping: this.controlMapping,
+    });
     if (this.state === "ready") {
       const modeLabel = this.selectedMode === "normal" ? "노말" : "하드";
       this.drawOverlay("네발 클롭", [
@@ -390,212 +396,6 @@ export class Game {
       Comma: ",", Period: ".", Slash: "/",
     };
     return labels[code] ?? code;
-  }
-
-  drawSky(ctx) {
-    const bands = ["#5424b8", "#6429bd", "#7629b5", "#8c2ba4", "#a43b89", "#b95373"];
-    const bandHeight = Math.ceil(390 / bands.length);
-    bands.forEach((color, index) => {
-      ctx.fillStyle = color;
-      ctx.fillRect(0, index * bandHeight, this.canvas.width, bandHeight);
-    });
-  }
-
-  drawHills(ctx) {
-    ctx.fillStyle = "#48316f";
-    ctx.fillRect(0, 294, 96, 22);
-    ctx.fillRect(72, 278, 68, 38);
-    ctx.fillRect(124, 292, 120, 24);
-    ctx.fillRect(236, 270, 84, 46);
-    ctx.fillRect(304, 289, 116, 27);
-    ctx.fillRect(402, 278, 130, 38);
-    ctx.fillRect(520, 295, 110, 21);
-    ctx.fillStyle = "#5b367c";
-    ctx.fillRect(0, 311, 218, 18);
-    ctx.fillRect(190, 302, 156, 27);
-    ctx.fillRect(340, 313, 176, 16);
-    ctx.fillRect(500, 305, 160, 24);
-  }
-
-  drawTree(ctx) {
-    ctx.fillStyle = "#33283e";
-    ctx.fillRect(830, 112, 28, 282);
-    ctx.fillRect(798, 180, 34, 22);
-    ctx.fillRect(854, 156, 26, 20);
-    ctx.fillStyle = "#4b3848";
-    ctx.fillRect(842, 124, 10, 248);
-    ctx.fillStyle = "#586127";
-    ctx.fillRect(650, 42, 110, 66);
-    ctx.fillRect(704, 10, 128, 94);
-    ctx.fillRect(778, 0, 150, 126);
-    ctx.fillRect(882, 22, 78, 112);
-    ctx.fillRect(618, 78, 86, 68);
-    ctx.fillRect(670, 118, 250, 44);
-    ctx.fillStyle = "#73772b";
-    ctx.fillRect(692, 28, 72, 42);
-    ctx.fillRect(744, 4, 88, 50);
-    ctx.fillRect(826, 18, 88, 62);
-    ctx.fillRect(636, 88, 78, 34);
-    ctx.fillStyle = "#3e522d";
-    ctx.fillRect(720, 70, 28, 22);
-    ctx.fillRect(792, 58, 34, 24);
-    ctx.fillRect(866, 86, 34, 26);
-    ctx.fillRect(684, 126, 28, 20);
-    ctx.fillRect(908, 128, 28, 24);
-  }
-
-  drawGround(ctx) {
-    ctx.fillStyle = "#39243e";
-    ctx.fillRect(0, 390, this.canvas.width, 150);
-    ctx.fillStyle = "#4d2850";
-    ctx.fillRect(0, 410, this.canvas.width, 130);
-    ctx.fillStyle = "#83a632";
-    ctx.fillRect(0, 382, this.canvas.width, 8);
-    ctx.fillStyle = "#b4cc4b";
-    for (let x = 0; x < this.canvas.width; x += 18) {
-      const height = 6 + (x % 4) * 2;
-      ctx.fillRect(x + 3, 382 - height, 3, height);
-    }
-    ctx.fillStyle = "#644057";
-    ctx.fillRect(0, 500, this.canvas.width, 40);
-    ctx.fillStyle = "#2d2038";
-    ctx.fillRect(0, 532, this.canvas.width, 8);
-  }
-
-  drawHazards(ctx) {
-    for (const hazard of this.hazards) {
-      const colors = {
-        "slippery-log": "#8b5637", "monkey-banana": "#f0bc4e", "ground-spear": "#d9d4cc",
-        "knockback-snake": "#79a342", commuter: "#648ec2", "train-edge": "#d26059",
-        turnstile: "#8a9a9e", conveyor: "#9a7b5c", piston: "#bd554d",
-        "rolling-gear": "#99949a", gust: "#8fd1e5", "swinging-sign": "#e1a24a",
-        "low-wire": "#e7dfad", puddle: "#65b6d2", cart: "#bd725a", "steam-vent": "#d5d0cf",
-      };
-      const bounds = hazard.bounds;
-      ctx.fillStyle = !hazard.armed
-        ? (Math.floor(hazard.age * 12) % 2 === 0 ? "#fff0a8" : "#e54b52")
-        : (colors[hazard.type] ?? "#ee8138");
-      ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
-      ctx.fillStyle = "rgba(40, 35, 59, 0.45)";
-      if (hazard.motion === "trap" && !hazard.armed) {
-        ctx.fillRect(bounds.x - 4, GROUND_Y - 5, bounds.width + 8, 4);
-      } else if (hazard.width > 48) {
-        ctx.fillRect(bounds.x + 6, bounds.y + 7, Math.max(4, bounds.width - 12), 5);
-      } else {
-        ctx.fillRect(bounds.x + 6, bounds.y + 6, Math.min(10, bounds.width - 8), 6);
-      }
-    }
-  }
-
-  drawPlayer(ctx) {
-    const { player } = this;
-    const fall = player.fallProgress;
-    const limbs = player.limbs;
-    ctx.save();
-    ctx.translate(player.x, player.y);
-    ctx.translate(10, -66);
-    ctx.rotate(player.bodyWobble + fall * 1.05);
-    ctx.translate(-10, 66);
-    ctx.globalAlpha = 1 - fall * 0.35;
-
-    const drawArm = (limb, shoulderX, direction) => {
-      const lift = limbs[limb].lift;
-      const fold = fall * 17;
-      const elbowX = shoulderX + direction * (8 - fold);
-      const elbowY = -34 - lift * 13 + fold * 0.3;
-      const handX = shoulderX + direction * (13 - fold * 0.75);
-      const handY = -4 - lift * 27 + fall * 31;
-      this.drawPixelSegment(ctx, shoulderX, -64, elbowX, elbowY, "#46334a", 11);
-      this.drawPixelSegment(ctx, elbowX, elbowY, handX, handY, "#d89d72", 8);
-      ctx.fillStyle = "#f0bc92";
-      ctx.fillRect(Math.round(handX - 4), Math.round(handY - 3), 8, 6);
-    };
-    const drawLeg = (limb, hipX, direction) => {
-      const lift = limbs[limb].lift;
-      const swing = Math.sin(limbs[limb].swing) * (0.08 + player.forwardSpeed / 1800);
-      const kneeX = hipX + direction * (11 + swing * 9);
-      const kneeY = -27 - lift * 12;
-      const footX = hipX + direction * (16 + swing * 16);
-      const footY = -2 - lift * 24 + fall * 18;
-      this.drawPixelSegment(ctx, hipX, -55, kneeX, kneeY, "#383148", 12);
-      this.drawPixelSegment(ctx, kneeX, kneeY, footX, footY, "#51435b", 10);
-      ctx.fillStyle = "#30283b";
-      ctx.fillRect(Math.round(footX - 9), Math.round(footY - 2), 18, 7);
-    };
-
-    drawLeg("rightLeg", -22, -1);
-    drawArm("rightArm", -7, -1);
-    ctx.fillStyle = "#e7c2a1";
-    ctx.fillRect(-12, -77, 58, 31);
-    ctx.fillStyle = "#302e43";
-    ctx.fillRect(-17, -82, 59, 31);
-    ctx.fillStyle = "#78627a";
-    ctx.fillRect(-8, -75, 36, 5);
-    ctx.fillRect(23, -75, 7, 20);
-    ctx.fillStyle = "#d6b46f";
-    ctx.fillRect(-13, -54, 51, 5);
-    const headTop = -115 + this.getHeadOffset();
-    ctx.fillStyle = "#d89d72";
-    ctx.fillRect(28, headTop + 21, 15, 15);
-    ctx.fillStyle = "#f0c29d";
-    ctx.fillRect(33, headTop, 35, 27);
-    ctx.fillStyle = "#30283b";
-    ctx.fillRect(30, headTop - 4, 35, 9);
-    ctx.fillRect(35, headTop - 9, 23, 7);
-    ctx.fillStyle = "#201e2e";
-    ctx.fillRect(57, headTop + 10, 4, 4);
-    ctx.fillStyle = "#f4e5ca";
-    ctx.fillRect(65, headTop + 16, 4, 3);
-    drawArm("leftArm", 12, 1);
-    drawLeg("leftLeg", -8, 1);
-    ctx.restore();
-  }
-
-  drawPixelSegment(ctx, startX, startY, endX, endY, color, width) {
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width;
-    ctx.lineCap = "square";
-    ctx.beginPath();
-    ctx.moveTo(Math.round(startX), Math.round(startY));
-    ctx.lineTo(Math.round(endX), Math.round(endY));
-    ctx.stroke();
-  }
-
-  drawHud(ctx) {
-    const { level } = difficultyForDistance(this.distance, this.mode ?? "normal");
-    ctx.fillStyle = "rgba(35, 27, 47, 0.76)";
-    ctx.fillRect(16, 14, 252, 70);
-    ctx.fillRect(this.canvas.width - 244, 14, 228, 70);
-    ctx.fillStyle = "#fff0a8";
-    ctx.font = "bold 16px monospace";
-    ctx.textAlign = "left";
-    ctx.fillText("속도", 28, 34);
-    ctx.fillStyle = "#28233b";
-    ctx.fillRect(28, 43, 210, 12);
-    ctx.fillStyle = "#79c65a";
-    ctx.fillRect(28, 43, Math.round(Math.min(1, this.player.forwardSpeed / 260) * 210), 12);
-    ctx.fillStyle = "#fff0a8";
-    ctx.fillStyle = "#fff0a8";
-    ctx.textAlign = "right";
-    ctx.fillText("거리  " + this.score, this.canvas.width - 28, 34);
-    ctx.fillText("최고  " + this.bestScore + "   레벨 " + level, this.canvas.width - 28, 56);
-    ctx.fillText(this.map ? this.map.name : "", this.canvas.width - 28, 78);
-    ctx.textAlign = "start";
-
-    const labels = { leftArm: "왼팔", rightArm: "오른팔", leftLeg: "왼다리", rightLeg: "오른다리" };
-    LIMB_NAMES.forEach((limb, index) => {
-      const x = 14 + index * 236;
-      const raised = this.player.limbs[limb].raised;
-      ctx.fillStyle = "rgba(35, 27, 47, 0.9)";
-      ctx.fillRect(x, 482, 224, 42);
-      ctx.fillStyle = raised ? "#f0bc4e" : "#8a8297";
-      ctx.fillRect(x + 10, 494, 14, 14);
-      ctx.fillStyle = "#fff0a8";
-      ctx.font = "bold 14px monospace";
-      ctx.textAlign = "left";
-      ctx.fillText(labels[limb] + " · " + (raised ? "들림" : "내려감"), x + 34, 506);
-    });
-    ctx.textAlign = "start";
   }
 
   drawOverlay(title, lines) {
