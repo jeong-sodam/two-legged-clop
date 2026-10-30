@@ -75,4 +75,4 @@ Task: T04-pixel-art-renderer
 ## Progress
 - [x] 구현 완료
 - [x] 검증 통과 (`node --check`, 5개 맵/16개 장애물 렌더 smoke check, `git diff --check`)
-- commit: pending
+- commit: `2c589884c711e70458274be2628a3c141461df01`

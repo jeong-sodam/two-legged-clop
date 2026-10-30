@@ -363,10 +363,11 @@ export class Game {
     if (this.state === "ready") {
       const modeLabel = this.selectedMode === "normal" ? "노말" : "하드";
       this.drawOverlay("네발 클롭", [
-        "선택 모드: " + modeLabel + "  (← / → 로 변경)",
-        "노말: 키를 누르고 있으면 들고, 놓으면 내립니다.",
-        "하드: 들기/내리기 키를 따로 눌러 자세를 바꿉니다.",
-        "Enter 또는 Space를 눌러 시작",
+        "모드 선택   ←  " + modeLabel + "  →",
+        "노말  ·  네 키를 누르고 있어 팔다리를 들기",
+        "하드  ·  여덟 키로 들기와 내리기를 따로 조작",
+        "장애물은 머리에 닿으면 넘어집니다",
+        "Enter 또는 Space로 시작",
       ]);
     } else if (this.state === "memorize") {
       const mappingLines = ["왼팔", "오른팔", "왼다리", "오른다리"].map((label, index) => {
@@ -381,8 +382,9 @@ export class Game {
       this.drawOverlay("\uB118\uC5B4\uC84C\uC2B5\uB2C8\uB2E4", [
         "\uCD5C\uC885 \uC810\uC218  " + this.score,
         "\uCD5C\uACE0 \uC810\uC218  " + this.bestScore,
+        "모드  " + (this.mode === "hard" ? "하드" : "노말"),
         "\uD53C\uD55C \uC7A5\uC560\uBB3C  " + this.obstaclesAvoided,
-        "Enter 또는 Space를 눌러 모드를 다시 선택",
+        "Enter 또는 Space로 모드 선택으로",
       ]);
     }
   }
@@ -402,22 +404,31 @@ export class Game {
     const ctx = this.context;
     const cardWidth = Math.min(690, this.canvas.width - 48);
     const lineHeight = 27;
-    const cardHeight = 80 + lines.length * lineHeight;
+    const cardHeight = 88 + lines.length * lineHeight;
     const x = Math.round((this.canvas.width - cardWidth) / 2);
     const y = Math.round((this.canvas.height - cardHeight) / 2);
-    ctx.fillStyle = "rgba(22, 17, 36, 0.92)";
+    ctx.fillStyle = "rgba(20, 20, 34, 0.94)";
     ctx.fillRect(x, y, cardWidth, cardHeight);
-    ctx.strokeStyle = "#c5a66f";
-    ctx.lineWidth = 4;
-    ctx.strokeRect(x + 2, y + 2, cardWidth - 4, cardHeight - 4);
+    ctx.fillStyle = "#9a7658";
+    ctx.fillRect(x + 4, y + 4, cardWidth - 8, 3);
+    ctx.fillRect(x + 4, y + cardHeight - 7, cardWidth - 8, 3);
+    ctx.fillRect(x + 4, y + 4, 3, cardHeight - 8);
+    ctx.fillRect(x + cardWidth - 7, y + 4, 3, cardHeight - 8);
     ctx.textAlign = "center";
     ctx.fillStyle = "#fff0a8";
-    ctx.font = "bold 28px monospace";
+    ctx.font = "bold 27px monospace";
     ctx.fillText(title, this.canvas.width / 2, y + 39);
     ctx.fillStyle = "#f1e9d4";
     ctx.font = "bold 15px monospace";
     lines.forEach((line, index) => {
-      ctx.fillText(line, this.canvas.width / 2, y + 70 + index * lineHeight, cardWidth - 28);
+      const isModeSelection = this.state === "ready" && index === 0;
+      if (isModeSelection) {
+        ctx.fillStyle = "rgba(227, 186, 105, 0.16)";
+        ctx.fillRect(x + 18, y + 54 + index * lineHeight, cardWidth - 36, 26);
+      }
+      ctx.fillStyle = isModeSelection ? "#f4cf7d" : "#e7e1d3";
+      ctx.font = isModeSelection ? "bold 16px monospace" : "bold 14px monospace";
+      ctx.fillText(line, this.canvas.width / 2, y + 73 + index * lineHeight, cardWidth - 36);
     });
     ctx.textAlign = "start";
   }

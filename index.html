@@ -4,18 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#161124" />
-    <title>두 발 클롭</title>
+    <title>네발 클롭 — 랜덤 키 픽셀 게임</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <main class="game-shell">
-      <h1 class="visually-hidden">두 발 클롭</h1>
-      <canvas id="game" width="960" height="540" aria-label="두 발 클롭 게임"></canvas>
+      <h1 class="visually-hidden">네발 클롭</h1>
+      <canvas id="game" width="960" height="540" role="img" aria-label="네발 클롭 게임 화면. 키보드로 팔다리를 움직여 머리로 장애물에 부딪치지 않게 전진하세요."></canvas>
       <section class="keyboard-help" aria-label="키보드 조작 안내">
-        <p><strong>다리 균형</strong> <kbd>←</kbd> 오른발 들기 <kbd>→</kbd> 오른발 내리기</p>
-        <p><kbd>↑</kbd> 왼발 내리기 <kbd>↓</kbd> 왼발 들기</p>
-        <p><strong>이동</strong> <kbd>A</kbd> / <kbd>D</kbd> 좌우 이동 <kbd>W</kbd> 점프 <kbd>S</kbd> 숙이기</p>
-        <p><strong>시작</strong> <kbd>Enter</kbd> / <kbd>Space</kbd></p>
+        <p><strong>조작</strong> 매 판 무작위로 바뀌는 키를 10초 동안 확인하세요.</p>
+        <p><strong>목표</strong> 네 팔다리를 움직여 전진하고 머리가 장애물에 닿지 않게 하세요.</p>
+        <p><strong>모드</strong> 방향키로 노말/하드를 고르고 Enter 또는 Space로 시작하세요.</p>
       </section>
     </main>
     <script type="module" src="./src/main.js"></script>

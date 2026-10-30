@@ -7,7 +7,7 @@
 | Phase | Status | Summary | Blueprint |
 | :--- | :--- | :--- | :--- |
 | P01 | `done` | 모드/입력/준비 흐름, 네발 기기 조작, 장애물과 맵 선택을 구현해 완결된 플레이 루프를 만든다. | [P01](../phases/2026-10-30-quadruped-clop/P01-core-gameplay/phase.md) |
-| P02 | `in_progress` | 오리지널 16비트 픽셀 아트, 읽기 쉬운 HUD와 화면 흐름, 플레이 안내를 완성한다. | [P02](../phases/2026-10-30-quadruped-clop/P02-pixel-art-polish/phase.md) |
+| P02 | `done` | 오리지널 16비트 픽셀 아트, 읽기 쉬운 HUD와 화면 흐름, 플레이 안내를 완성한다. | [P02](../phases/2026-10-30-quadruped-clop/P02-pixel-art-polish/phase.md) |
 
 ## 범위 밖
 - 로그인, 닉네임 등록, 회사 Azure Cosmos DB/Azure Function 연동, 온라인 랭킹
