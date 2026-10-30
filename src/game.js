@@ -1,4 +1,5 @@
 import { createHazard, difficultyForScore, intersects } from "./obstacles.js";
+import { CONTROL_KEYS, createControlMapping } from "./input.js";
 
 export class Game {
   constructor(canvas, context, input) {
@@ -6,6 +7,13 @@ export class Game {
     this.context = context;
     this.input = input;
     this.state = "ready";
+    this.selectedMode = "normal";
+    this.mode = null;
+    this.controlMapping = null;
+    this.prepareSecondsRemaining = 0;
+    this.prepareElapsedSeconds = 0;
+    this.previousMapping = this.loadPreviousMapping();
+    this.temporaryLimbRaised = { leftArm: false, rightArm: false, leftLeg: false, rightLeg: false };
     this.elapsedSeconds = 0;
     this.lastTimestamp = null;
     this.animationFrameId = null;
@@ -61,8 +69,48 @@ export class Game {
     }
   }
 
-  startRun() {
-    this.state = "playing";
+  loadPreviousMapping() {
+    try {
+      const stored = JSON.parse(localStorage.getItem("quadrupedClopPreviousMapping"));
+      if (!stored || !["normal", "hard"].includes(stored.mode) || !stored.mapping) return null;
+      const codes = [];
+      for (const limb of ["leftArm", "rightArm", "leftLeg", "rightLeg"]) {
+        const pair = stored.mapping[limb];
+        if (!pair || !CONTROL_KEYS.includes(pair.raise)) return null;
+        codes.push(pair.raise);
+        if (stored.mode === "hard") {
+          if (!CONTROL_KEYS.includes(pair.lower)) return null;
+          codes.push(pair.lower);
+        } else if (pair.lower !== null) {
+          return null;
+        }
+      }
+      if (new Set(codes).size !== codes.length) return null;
+      return { mode: stored.mode, mapping: stored.mapping };
+    } catch {
+      return null;
+    }
+  }
+
+  savePreviousMapping(mode, mapping) {
+    this.previousMapping = { mode, mapping };
+    try {
+      localStorage.setItem("quadrupedClopPreviousMapping", JSON.stringify(this.previousMapping));
+    } catch {
+      // A session-local mapping still prevents repeats when browser storage is unavailable.
+    }
+  }
+
+  startRun(mode = this.selectedMode) {
+    this.mode = mode;
+    this.selectedMode = mode;
+    this.controlMapping = createControlMapping(mode, this.rng, this.previousMapping);
+    this.input.clear();
+    this.input.setControlMapping(this.controlMapping);
+    this.savePreviousMapping(mode, this.controlMapping);
+    this.state = "memorize";
+    this.prepareSecondsRemaining = 10;
+    this.prepareElapsedSeconds = 0;
     this.elapsedSeconds = 0;
     this.fallElapsedSeconds = 0;
     this.hazards = [];
@@ -71,6 +119,7 @@ export class Game {
     this.distanceRemainder = 0;
     this.obstaclesAvoided = 0;
     this.nextHazardId = 1;
+    this.temporaryLimbRaised = { leftArm: false, rightArm: false, leftLeg: false, rightLeg: false };
     this.player = {
       x: 220, y: 390, vx: 0, vy: 0,
       leftFoot: 0.5, rightFoot: 0.5,
@@ -92,10 +141,34 @@ export class Game {
   }
 
   update(deltaSeconds) {
-    if (this.state === "ready" || this.state === "gameover") {
+    if (this.state === "ready") {
+      const modeLeft = this.input.consumePressed("ArrowLeft");
+      const modeRight = this.input.consumePressed("ArrowRight");
+      if (modeLeft !== modeRight) {
+        this.selectedMode = this.selectedMode === "normal" ? "hard" : "normal";
+      }
       const enterPressed = this.input.consumePressed("Enter");
       const spacePressed = this.input.consumePressed("Space");
-      if (enterPressed || spacePressed) this.startRun();
+      if (enterPressed || spacePressed) this.startRun(this.selectedMode);
+      return;
+    }
+    if (this.state === "gameover") {
+      const enterPressed = this.input.consumePressed("Enter");
+      const spacePressed = this.input.consumePressed("Space");
+      if (enterPressed || spacePressed) {
+        this.state = "ready";
+        this.input.clear();
+      }
+      return;
+    }
+    if (this.state === "memorize") {
+      this.prepareElapsedSeconds += deltaSeconds;
+      this.prepareSecondsRemaining = Math.max(0, 10 - this.prepareElapsedSeconds);
+      if (this.prepareElapsedSeconds >= 10) {
+        this.prepareSecondsRemaining = 0;
+        this.input.clear();
+        this.state = "playing";
+      }
       return;
     }
     if (this.state === "falling") {
@@ -120,11 +193,21 @@ export class Game {
 
   updateLegs(deltaSeconds) {
     const { input, player } = this;
-    const rightDirection = Number(input.isDown("ArrowLeft")) - Number(input.isDown("ArrowRight"));
-    const leftDirection = Number(input.isDown("ArrowDown")) - Number(input.isDown("ArrowUp"));
+    const limbNames = ["leftArm", "rightArm", "leftLeg", "rightLeg"];
+    for (const limb of limbNames) {
+      const controls = this.controlMapping[limb];
+      if (this.mode === "normal") {
+        this.temporaryLimbRaised[limb] = input.isDown(controls.raise);
+      } else {
+        if (input.consumePressed(controls.raise)) this.temporaryLimbRaised[limb] = true;
+        if (input.consumePressed(controls.lower)) this.temporaryLimbRaised[limb] = false;
+      }
+    }
 
-    player.rightFootVelocity = rightDirection * 2.8;
-    player.leftFootVelocity = leftDirection * 2.8;
+    const rightTarget = this.temporaryLimbRaised.rightLeg ? 1 : 0;
+    const leftTarget = this.temporaryLimbRaised.leftLeg ? 1 : 0;
+    player.rightFootVelocity = Math.sign(rightTarget - player.rightFoot) * 2.8;
+    player.leftFootVelocity = Math.sign(leftTarget - player.leftFoot) * 2.8;
     player.rightFoot = this.clamp(player.rightFoot + player.rightFootVelocity * deltaSeconds, 0, 1);
     player.leftFoot = this.clamp(player.leftFoot + player.leftFootVelocity * deltaSeconds, 0, 1);
   }
@@ -256,21 +339,41 @@ export class Game {
     this.drawPlayer(ctx);
     this.drawHud(ctx);
     if (this.state === "ready") {
-      this.drawOverlay("\uB450 \uBC1C \uD074\uB86D", [
-        "\uC7A5\uC560\uBB3C\uC744 \uD53C\uD558\uACE0 \uADE0\uD615\uC744 \uC7A1\uC544 \uAC70\uB9AC\uB97C \uB298\uB9AC\uC138\uC694.",
-        "\uB2E4\uB9AC: \u2190 \uC624\uB978\uBC1C \uB4E4\uAE30  \u2192 \uC624\uB978\uBC1C \uB0B4\uB9AC\uAE30",
-        "\u2191 \uC67C\uBC1C \uB0B4\uB9AC\uAE30  \u2193 \uC67C\uBC1C \uB4E4\uAE30",
-        "A / D \uC774\uB3D9   W \uC810\uD504   S \uC219\uC774\uAE30",
-        "\uC5D4\uD130 \uB610\uB294 \uC2A4\uD398\uC774\uC2A4\uB97C \uB20C\uB7EC \uC2DC\uC791",
+      const modeLabel = this.selectedMode === "normal" ? "노말" : "하드";
+      this.drawOverlay("네발 클롭", [
+        "선택 모드: " + modeLabel + "  (← / → 로 변경)",
+        "노말: 키를 누르고 있으면 들고, 놓으면 내립니다.",
+        "하드: 들기/내리기 키를 따로 눌러 자세를 바꿉니다.",
+        "Enter 또는 Space를 눌러 시작",
       ]);
+    } else if (this.state === "memorize") {
+      const mappingLines = ["왼팔", "오른팔", "왼다리", "오른다리"].map((label, index) => {
+        const limb = ["leftArm", "rightArm", "leftLeg", "rightLeg"][index];
+        const controls = this.controlMapping[limb];
+        const raise = this.formatControlKey(controls.raise);
+        if (this.mode === "normal") return label + " 들기: " + raise;
+        return label + "  ↑ " + raise + "   ↓ " + this.formatControlKey(controls.lower);
+      });
+      this.drawOverlay("키를 기억하세요 · " + Math.ceil(this.prepareSecondsRemaining) + "초", mappingLines);
     } else if (this.state === "gameover") {
       this.drawOverlay("\uB118\uC5B4\uC84C\uC2B5\uB2C8\uB2E4", [
         "\uCD5C\uC885 \uC810\uC218  " + this.score,
         "\uCD5C\uACE0 \uC810\uC218  " + this.bestScore,
         "\uD53C\uD55C \uC7A5\uC560\uBB3C  " + this.obstaclesAvoided,
-        "\uC5D4\uD130 \uB610\uB294 \uC2A4\uD398\uC774\uC2A4\uB97C \uB20C\uB7EC \uB2E4\uC2DC \uC2DC\uC791",
+        "Enter 또는 Space를 눌러 모드를 다시 선택",
       ]);
     }
+  }
+
+  formatControlKey(code) {
+    if (code.startsWith("Key")) return code.slice(3);
+    if (code.startsWith("Digit")) return code.slice(5);
+    const labels = {
+      Minus: "-", Equal: "=", BracketLeft: "[", BracketRight: "]",
+      Backslash: "\\", Semicolon: ";", Quote: "'", Backquote: "`",
+      Comma: ",", Period: ".", Slash: "/",
+    };
+    return labels[code] ?? code;
   }
 
   drawSky(ctx) {
