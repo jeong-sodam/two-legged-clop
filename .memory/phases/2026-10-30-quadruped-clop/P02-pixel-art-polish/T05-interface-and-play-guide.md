@@ -66,4 +66,4 @@ Task: T05-interface-and-play-guide
 ## Progress
 - [x] 구현 완료
 - [x] 검증 통과 (`node --check`, 5개 화면 상태 렌더 smoke check, `git diff --check`)
-- commit: `c1ae09b649c2b7daea2c20e651fd78ad12024db0`
+- commit: `8e8f51e95925fb78dd0c8567aa5d7973d0f577b6`
